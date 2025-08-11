@@ -1,5 +1,7 @@
 package com.taskboard.db;
 
-public class DBException {
-
+public class DBException extends RuntimeException {
+    public DBException(String msg) {
+        super(msg);
+    }
 }
