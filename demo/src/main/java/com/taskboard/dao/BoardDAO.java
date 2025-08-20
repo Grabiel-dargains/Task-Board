@@ -83,4 +83,54 @@ public class BoardDAO {
             DB.closeStatement(st);
         }
     }
+
+    public Board findByName(String name){
+        PreparedStatement st = null;
+        ResultSet rs = null;
+        String sql = "SELECT * FROM boards WHERE name = ?";
+
+        try {
+            st = conn.prepareStatement(sql);
+            st.setString(1, name);
+            rs = st.executeQuery();
+
+            if (rs.next()) {
+                Board board = new Board();
+                board.setId(rs.getInt("id"));
+                board.setName(rs.getString("name"));
+                return board;
+            }
+
+            return null;
+        } catch (SQLException e) {throw new DBException(e.getMessage());
+        } finally {
+            DB.closeStatement(st);
+            DB.closeResultSet(rs);
+        }
+    }
+    public Board findById(Integer id) {
+        PreparedStatement st = null;
+        ResultSet rs = null;
+        String sql = "SELECT * FROM boards WHERE id = ?";
+
+        try {
+            st = conn.prepareStatement(sql);
+            st.setInt(1, id);
+            rs = st.executeQuery();
+
+            if (rs.next()) {
+                Board board = new Board();
+                board.setId(rs.getInt("id"));
+                board.setName(rs.getString("name"));
+                return board;
+            }
+
+            return null;
+        } catch (SQLException e) {throw new DBException(e.getMessage());
+        } finally {
+            DB.closeStatement(st);
+            DB.closeResultSet(rs);
+
+        }
+    }
 }

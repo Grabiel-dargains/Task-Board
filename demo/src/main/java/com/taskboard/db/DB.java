@@ -12,9 +12,8 @@ public class DB {
 
     private static Connection conn = null;
 
-    // Carrega as propriedades do arquivo db.properties
     private static Properties loadProperties() {
-        try (FileInputStream fs = new FileInputStream("src/main/resources/db.properties")) {
+        try (FileInputStream fs = new FileInputStream("demo\\src\\main\\java\\com\\resources\\db.properties")) {
             Properties props = new Properties();
             props.load(fs);
             return props;
@@ -23,32 +22,36 @@ public class DB {
         }
     }
 
-    // Obtém ou cria uma conexão com o banco
     public static Connection getConnection() {
         if (conn == null) {
             try {
                 Properties props = loadProperties();
                 String url = props.getProperty("dburl");
-                conn = DriverManager.getConnection(url, props);
+                String user = props.getProperty("user");
+                String password = props.getProperty("password");
+
+                if (url == null || user == null || password == null) {
+                    throw new DBException("As propriedades 'dburl', 'user' e 'password' devem estar definidas em db.properties.");
+                }
+                conn = DriverManager.getConnection(url, user, password);
             } catch (SQLException e) {
-                throw new DBException(e.getMessage());
+                throw new DBException("Erro de conexão com o banco de dados: " + e.getMessage());
             }
         }
         return conn;
     }
 
-    // Fecha a conexão
     public static void closeConnection() {
         if (conn != null) {
             try {
                 conn.close();
+                conn = null;
             } catch (SQLException e) {
                 throw new DBException(e.getMessage());
             }
         }
     }
-    
-    // Métodos auxiliares para fechar Statement e ResultSet
+
     public static void closeStatement(Statement st) {
         if (st != null) {
             try {

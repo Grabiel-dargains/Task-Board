@@ -21,28 +21,49 @@ public class CardDAO {
     }
 
     public void create(Card card) {
-        PreparedStatement st = null;
+        PreparedStatement stCard = null;
+        PreparedStatement stHistory = null;
+        String sqlCard = "INSERT INTO cards (title, description, column_id) VALUES (?, ?, ?)";
+        String sqlHistory = "INSERT INTO card_movement_history (card_id, column_id) VALUES (?, ?)";
         try {
-            st = conn.prepareStatement(
-                "INSERT INTO cards (name) VALUES (?)",
-                Statement.RETURN_GENERATED_KEYS);
-            st.setString(1, card.getTitle());
+            conn.setAutoCommit(false);
 
-            int rowsAffected = st.executeUpdate();
+            stCard = conn.prepareStatement(sqlCard, Statement.RETURN_GENERATED_KEYS);
+            stCard.setString(1, card.getTitle());
+            stCard.setString(2, card.getDescription());
+            stCard.setInt(3, card.getColumnId());
+            stCard.executeUpdate();
 
-            if (rowsAffected > 0) {
-                ResultSet rs = st.getGeneratedKeys();
-                if (rs.next()) {
-                    card.setID(rs.getInt(1));
-                }
-                DB.closeResultSet(rs);
-            } else {
-                throw new DBException("Erro inesperado! Nenhuma linha afetada.");
+            ResultSet rs = stCard.getGeneratedKeys();
+            if(rs.next()){
+                card.setID(rs.getInt(1));}
+            else {
+                throw new SQLException("Falha ao obter ID do card criado.");
             }
+            DB.closeResultSet(rs);
+
+            stHistory = conn.prepareStatement(sqlHistory);
+            stHistory.setInt(1, card.getId());
+            stHistory.setInt(2, card.getColumnId());
+            stHistory.executeUpdate();
+
+            conn.commit();
+
         } catch (SQLException e) {
-            throw new DBException(e.getMessage());
+            try {
+                conn.rollback();
+            } catch (SQLException e1) {
+                throw new DBException("Erro ao tentar reverter a criação de card.");
+            }
+            throw new DBException("Erro ao criar card: " + e.getMessage());
         } finally {
-            DB.closeStatement(st);
+            DB.closeStatement(stCard);
+            DB.closeStatement(stHistory);
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -85,11 +106,9 @@ public class CardDAO {
     }
 
     public void updateColumn(int cardId, int oldColumnId, int newColumnId) {
-        
+
         String updateCardSql = "UPDATE cards SET column_id = ? WHERE id = ?";
-        
         String updateHistorySql = "UPDATE card_movement_history SET exit_time = CURRENT_TIMESTAMP WHERE card_id = ? AND column_id = ? AND exit_time IS NULL";
-        
         String insertHistorySql = "INSERT INTO card_movement_history (card_id, column_id) VALUES (?, ?)";
 
         PreparedStatement stUpdateCard = null;
@@ -99,30 +118,25 @@ public class CardDAO {
         try {
             conn.setAutoCommit(false);
 
-            // 1. Atualiza o histórico de movimento, registrando a data/hora de SAÍDA
             stUpdateHistory = conn.prepareStatement(updateHistorySql);
             stUpdateHistory.setInt(1, cardId);
             stUpdateHistory.setInt(2, oldColumnId);
             stUpdateHistory.executeUpdate();
 
-            // 2. Atualiza a tabela 'cards' para refletir a nova coluna
             stUpdateCard = conn.prepareStatement(updateCardSql);
             stUpdateCard.setInt(1, newColumnId);
             stUpdateCard.setInt(2, cardId);
             stUpdateCard.executeUpdate();
-            
-            // 3. Insere um novo registro no histórico para a ENTRADA na nova coluna
+
             stInsertHistory = conn.prepareStatement(insertHistorySql);
             stInsertHistory.setInt(1, cardId);
             stInsertHistory.setInt(2, newColumnId);
             stInsertHistory.executeUpdate();
 
-            // Se tudo deu certo, confirma a transação
             conn.commit();
 
         } catch (SQLException e) {
             try {
-                // Se algo deu errado, desfaz TODAS as operações
                 conn.rollback();
                 throw new DBException("Erro ao mover card, transação revertida. " + e.getMessage());
             } catch (SQLException e1) {
@@ -133,7 +147,6 @@ public class CardDAO {
             DB.closeStatement(stUpdateHistory);
             DB.closeStatement(stInsertHistory);
             try {
-                // Sempre retorna ao modo de auto-commit
                 conn.setAutoCommit(true);
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -141,15 +154,6 @@ public class CardDAO {
         }
     }
 
-    // --- MÉTODO 2: updateBlockStatus ---
-    /**
-     * Bloqueia ou desbloqueia um card e registra o motivo no histórico.
-     * Esta operação é transacional.
-     *
-     * @param cardId O ID do card.
-     * @param isBlocked true para bloquear, false para desbloquear.
-     * @param reason O motivo para o bloqueio ou desbloqueio.
-     */
     public void updateBlockStatus(int cardId, boolean isBlocked, String reason) {
         String updateCardSql = "UPDATE cards SET is_blocked = ? WHERE id = ?";
         
@@ -157,38 +161,29 @@ public class CardDAO {
         PreparedStatement stHistory = null;
 
         try {
-            // Inicia a transação
             conn.setAutoCommit(false);
 
-            // 1. Atualiza o status de bloqueio na tabela principal de cards
             stUpdateCard = conn.prepareStatement(updateCardSql);
             stUpdateCard.setBoolean(1, isBlocked);
             stUpdateCard.setInt(2, cardId);
             stUpdateCard.executeUpdate();
 
-            // 2. Registra a ação no histórico de bloqueios
             if (isBlocked) {
-                // Se está BLOQUEANDO, insere um novo registro de bloqueio
                 String insertBlockSql = "INSERT INTO card_block_history (card_id, block_reason) VALUES (?, ?)";
                 stHistory = conn.prepareStatement(insertBlockSql);
                 stHistory.setInt(1, cardId);
                 stHistory.setString(2, reason);
             } else {
-                // Se está DESBLOQUEANDO, atualiza o registro de bloqueio aberto
-                // A condição 'unblock_time IS NULL' garante que estamos fechando o bloqueio correto
                 String updateBlockSql = "UPDATE card_block_history SET unblock_time = CURRENT_TIMESTAMP, unblock_reason = ? WHERE card_id = ? AND unblock_time IS NULL";
                 stHistory = conn.prepareStatement(updateBlockSql);
                 stHistory.setString(1, reason);
                 stHistory.setInt(2, cardId);
             }
             stHistory.executeUpdate();
-
-            // Se tudo deu certo, confirma a transação
             conn.commit();
             
         } catch (SQLException e) {
             try {
-                // Se algo deu errado, desfaz TODAS as operações
                 conn.rollback();
                 throw new DBException("Erro ao atualizar status de bloqueio, transação revertida. " + e.getMessage());
             } catch (SQLException e1) {
@@ -198,11 +193,65 @@ public class CardDAO {
             DB.closeStatement(stUpdateCard);
             DB.closeStatement(stHistory);
              try {
-                // Sempre retorna ao modo de auto-commit
                 conn.setAutoCommit(true);
             } catch (SQLException e) {
                 e.printStackTrace();
             }
+        }
+    }
+    public List<Card> findByColumnId(int columnId){
+        PreparedStatement st = null;
+        ResultSet rs = null;
+        List<Card> list = new ArrayList<>();
+        String sql = "SELECT * FROM cards WHERE column_id = ? ORDER BY creation_date DESC";
+
+        try {
+            st = conn.prepareStatement(sql);
+            st.setInt(1, columnId);
+            rs = st.executeQuery();
+
+            while (rs.next()) {
+                Card card = new Card();
+                card.setID(rs.getInt("id"));
+                card.setTitle(rs.getString("title"));
+                card.setDescription(rs.getString("description"));
+                card.setCreationDate(rs.getTimestamp("creation_date").toLocalDateTime());
+                card.setBlock(rs.getBoolean("is_blocked"));
+                card.setColumnId(rs.getInt("column_id"));
+                list.add(card);
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new DBException(e.getMessage());
+        } finally {
+            DB.closeStatement(st);
+            DB.closeResultSet(rs);
+        }
+    }
+    public Card findById(int cardId) {
+        PreparedStatement st = null;
+        ResultSet rs = null;
+        String sql = "SELECT * FROM cards WHERE id = ?";
+        try {
+            st = conn.prepareStatement(sql);
+            st.setInt(1, cardId);
+            rs = st.executeQuery();
+            if (rs.next()){
+                Card card = new Card();
+                card.setID(rs.getInt("id"));
+                card.setTitle(rs.getString("title"));
+                card.setDescription(rs.getString("description"));
+                card.setCreationDate(rs.getTimestamp("creation_date").toLocalDateTime());
+                card.setBlock(rs.getBoolean("is_blocked"));
+                card.setColumnId(rs.getInt("column_id"));
+                return card;
+            }
+            return null;
+        } catch (SQLException e) {
+            throw new DBException(e.getMessage());
+        } finally {
+            DB.closeStatement(st);
+            DB.closeResultSet(rs);
         }
     }
 }

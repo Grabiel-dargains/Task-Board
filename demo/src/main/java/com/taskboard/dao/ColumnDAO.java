@@ -13,7 +13,6 @@ import com.taskboard.db.DBException;
 import com.taskboard.model.Column;
 import com.taskboard.model.ColumnType;
 
-
 public class ColumnDAO {
 
     private Connection conn;
@@ -24,11 +23,13 @@ public class ColumnDAO {
 
     public void create(Column column) {
         PreparedStatement st = null;
+        String sql = "INSERT INTO columns (name, board_id, column_order, type) VALUES (?, ?, ?, ?)";
         try {
-            st = conn.prepareStatement(
-                "INSERT INTO columns (name) VALUES (?)",
-                Statement.RETURN_GENERATED_KEYS);
+            st = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             st.setString(1, column.getName());
+            st.setInt(2, column.getBoardId());
+            st.setInt(3, column.getColumnOrder());
+            st.setString(4, column.getType().name());
 
             int rowsAffected = st.executeUpdate();
 
@@ -48,17 +49,25 @@ public class ColumnDAO {
         }
     }
 
-    public List<Column> findByBoardId(Integer id) {
+    public List<Column> findByBoardId(int boardId) {
         PreparedStatement st = null;
         ResultSet rs = null;
+        List<Column> list = new ArrayList<>();
+
+
         try {
-            st = conn.prepareStatement("SELECT * FROM columns WHERE id = ?");
+            st = conn.prepareStatement("SELECT * FROM columns WHERE board_id = ? ORDER BY column_order");
+            st.setInt(1, boardId);
             rs = st.executeQuery();
-            List<Column> list = new ArrayList<>();
+
             while (rs.next()) {
                 Column column = new Column();
                 column.setID(rs.getInt("id"));
                 column.setName(rs.getString("name"));
+                column.setBoardId(rs.getInt("board_id"));
+                column.setColumnOrder(rs.getInt("column_order"));
+                column.setType(ColumnType.valueOf(rs.getString("type")));
+
                 list.add(column);
             }
             return list;
@@ -73,7 +82,7 @@ public class ColumnDAO {
     public void deleteById(Integer id) {
         PreparedStatement st = null;
         try {
-            st = conn.prepareStatement("DELETE FROM columns WHERE id = ?");
+            st = conn.prepareStatement("DELETE FROM columns WHERE board_id = ?");
             st.setInt(1, id);
             int rows = st.executeUpdate();
             if (rows == 0) {
@@ -88,7 +97,7 @@ public class ColumnDAO {
 
     public void updateOrder(List<Column> columns){
         PreparedStatement st = null;
-        String sql = "UPDATE columns SET column_order = ? WHERE id = ?";
+        String sql = "UPDATE columns SET column_order = ? WHERE board_id = ?";
         try {
              conn.setAutoCommit(false);
 
@@ -100,11 +109,11 @@ public class ColumnDAO {
             for (Column col : columns) {
                 st.setInt(1, order);
                 st.setInt(2, col.getId());
-                st.addBatch(); // Adiciona a instrução SQL ao lote
+                st.addBatch();
                 order++;
             }
-            st.executeBatch(); //executa todas as instruções do lote.
-            conn.commit();  //confirma transação, torna permanente as alterações.
+            st.executeBatch();
+            conn.commit();
         } catch (SQLException e) {
             try {
                 conn.rollback();

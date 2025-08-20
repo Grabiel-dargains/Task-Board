@@ -35,6 +35,8 @@ public int getColumnId(){
     return columnId;
 }
 
+public void setColumnId(int columnId){ this.columnId = columnId; }
+
 public void setTitle(String newtitle){
     this.title = newtitle;
 }
@@ -49,6 +51,10 @@ public void setBlock(boolean block){
 
 public void setID(int id){
     this.id = id;
+}
+
+public void setCreationDate(LocalDateTime newcreationDate){
+    this.creationDate = newcreationDate;
 }
 
 }
